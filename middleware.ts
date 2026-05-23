@@ -4,8 +4,6 @@ import { updateSession } from '@/lib/supabase/middleware'
 function getRootDomain(): string {
   const configured = process.env.NEXT_PUBLIC_ROOT_DOMAIN
   if (configured) return configured.replace(/:.*/, '')
-  const vercelUrl = process.env.VERCEL_URL
-  if (vercelUrl) return vercelUrl
   return ''
 }
 
@@ -34,17 +32,28 @@ export async function middleware(request: NextRequest) {
   const rootHost = getRootDomain()
 
   const isLocalhost = host === 'localhost' || host === '127.0.0.1'
-  const isRootSite =
-    isLocalhost || (rootHost !== '' && (host === rootHost || host === `www.${rootHost}`))
-  const isSubdomain = !isLocalhost && rootHost !== '' && host.endsWith(`.${rootHost}`)
 
-  if (isSubdomain) {
-    const slug = host.replace(`.${rootHost}`, '')
-    return rewriteTenant(request, slug, null, pathname)
-  }
+  if (isLocalhost) {
+    // Local development — always main site
+  } else if (rootHost) {
+    // Production — root domain is configured
+    const isRootSite = host === rootHost || host === `www.${rootHost}`
+    const isSubdomain = host.endsWith(`.${rootHost}`)
 
-  if (!isRootSite) {
-    return rewriteTenant(request, null, host, pathname)
+    if (isSubdomain) {
+      const slug = host.replace(`.${rootHost}`, '')
+      return rewriteTenant(request, slug, null, pathname)
+    }
+
+    if (!isRootSite) {
+      // Custom domain
+      return rewriteTenant(request, null, host, pathname)
+    }
+
+    // isRootSite === true → fall through to main site logic
+  } else {
+    // No root domain configured — cannot detect subdomains or custom domains
+    // Treat ALL requests as main site (safe default, no 404s)
   }
 
   // -- Main site logic (marketing, auth, dashboard, admin) --
